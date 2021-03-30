@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Nearest Town</title>
+</head>
+<body>
+    <h1>Nearest Town</h1>
+    <p>Locates the nearest town using the National Weather Service API</p>
+    <p>Created by <a href="https://kstr.us" target="_blank">Kenny Stier</a></p>
+
+    <form id ='latlong'>
+        Latitude:    <input type='text' name='latitude'>
+        Latitude:    <input type='text' name='longitude'>
+
+        <input type="button" value="Submit" id='smit' >
+    </form>
+
+    <!-- https://howtocreateapps.com/fetch-and-display-json-html-javascript/ -->
+    <div id="myData"></div>
+    <script>
+        // https://stackoverflow.com/a/30282873
+        document.getElementById('smit').onclick = function () {
+            var latitudeLoc = document.querySelector("#latlong [name='latitude']");
+            var longitudeLoc = document.querySelector("#latlong [name='longitude']");
+            var latitude = latitudeLoc.value;
+            var longitude = longitudeLoc.value;
+            var sourceURL = "https://api.weather.gov/points/" + latitude + "," + longitude;
+            fetchData(sourceURL);
+        }
+        function fetchData(source) { 
+            fetch(source)
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                appendData(data);
+            })
+            .catch(function (err) {
+                console.log('Error: ' + err);
+            });
+        }
+        function appendData(data) {
+            var mainContainer = document.getElementById("myData");
+            var div = document.createElement("div");
+
+            var metersFromTown = data.properties.relativeLocation.properties.distance.value;
+            var milesFromTown = (metersFromTown / 1609.344).toFixed(1);
+
+            // Degrees to Cardinal Direction https://gist.github.com/felipeskroski/8aec22f01dabdbf8fb6b#gistcomment-3485882
+            function degToCard(value) { value = parseFloat(value); if (value <= 11.25) return 'N'; value -= 11.25; var allDirections = ['NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N']; var dIndex = parseInt(value/22.5); return allDirections[dIndex] ? allDirections[dIndex] : 'N'; }
+            var directionFromTown = degToCard(data.properties.relativeLocation.properties.bearing.value);
+
+            div.innerHTML = milesFromTown + " miles " + directionFromTown + " of " + data.properties.relativeLocation.properties.city + ", " + data.properties.relativeLocation.properties.state;
+
+            mainContainer.appendChild(div);
+        }
+    </script>
+</body>
+</html>
