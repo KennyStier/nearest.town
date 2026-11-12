@@ -1,8 +1,13 @@
 # Nearest Town API
 
-Returns the nearest US town to a latitude/longitude. It finds the town whose center point is closest, then measures distance and direction from that center. This matches how the NWS `/points` API worked before it switched to boundary-based distances in late June 2026.
+Returns the US town a latitude/longitude is in, or the nearest one if it's in no town:
 
-There are no dependencies: plain Node (20 or newer) and one JSON data file.
+1. If the point is **inside a town's boundary**, that town is returned. For example, Great American Ballpark gives Cincinnati, OH, even though Newport, KY's center point is closer.
+2. Otherwise, the town with the **nearest center point** is returned. This is how the NWS `/points` API worked before late June 2026.
+
+Distance and direction are always measured from the town's center point.
+
+There are no dependencies: plain Node (20 or newer) and two data files in `data/`.
 
 ## Data
 
@@ -14,12 +19,14 @@ There are no dependencies: plain Node (20 or newer) and one JSON data file.
 
 Each place's center is the Census **internal point**: roughly the middle of the place's land area, not necessarily its downtown.
 
+`data/boundaries.bin.gz` holds each place's boundary from the Census [cartographic boundary file](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html) `cb_2025_us_place_500k` (simplified to 1:500,000 scale, about 1.9 million points). Points within a few meters of a town line can land on either side.
+
 Names have their type suffix removed ("Millhousen town" → "Millhousen"). Consolidated city-counties get their common names ("Nashville-Davidson metropolitan government (balance)" → "Nashville"); see `OVERRIDES` in `build-data.mjs`.
 
-To rebuild when the Census publishes a new vintage (needs `unzip`):
+To rebuild when the Census publishes a new vintage (needs `unzip`), use the same year for both files so the IDs match:
 
 ```sh
-node build-data.mjs 2026
+node build-data.mjs 2026 && node build-boundaries.mjs 2026
 ```
 
 ## Run
@@ -40,6 +47,7 @@ You can deploy with Docker (`docker build -t nearest-town-api . && docker run -p
 {
   "query": { "lat": 39.237535, "lon": -85.461877 },
   "town": { "name": "Millhousen", "state": "IN", "type": "town", "geoid": "1849662", "lat": 39.211988, "lon": -85.434165 },
+  "inside": false,
   "distance": { "meters": 3711, "miles": 2.31 },
   "bearing": 320,
   "direction": "NW",
@@ -47,6 +55,7 @@ You can deploy with Docker (`docker build -t nearest-town-api . && docker run -p
 }
 ```
 
+- `inside` is `true` when the point is within the town's boundary. `text` is then just the name (`"Cincinnati, OH"`), but `distance`, `bearing` and `direction` are still filled in, measured from the town's center.
 - `bearing` / `direction` are measured **from the town center to the query point**, as in "2.3 miles NW of Millhousen".
 - Invalid coordinates return `400`.
 - `GET /health` returns the status and which data file is loaded.

@@ -8,6 +8,6 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "build-data": "node build-data.mjs"
+    "build-data": "node build-data.mjs && node build-boundaries.mjs"
   }
 }
