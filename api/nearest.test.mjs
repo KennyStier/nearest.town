@@ -27,7 +27,7 @@ for (const [lat, lon, name, state, miles, dir, inside] of cases) {
     assert.ok(Math.abs(r.distance.miles - miles) < 0.02, `miles ${r.distance.miles} vs ${miles}`);
     assert.equal(r.direction, dir);
     assert.equal(r.inside, inside);
-    assert.equal(r.text, inside ? `${name}, ${state}` : `${miles.toFixed(1)} miles ${dir} of ${name}, ${state}`);
+    assert.equal(r.text, `${miles.toFixed(1)} miles ${dir} of ${name}, ${state}`);
   });
 }
 
@@ -36,7 +36,7 @@ test("a town's own center is 0 miles away", () => {
   assert.equal(r.town.name, "Millhousen");
   assert.equal(r.distance.meters, 0);
   assert.equal(r.inside, true);
-  assert.equal(r.text, "Millhousen, IN");
+  assert.equal(r.text, "0.0 miles N of Millhousen, IN");
 });
 
 test("cardinal directions wrap correctly", () => {

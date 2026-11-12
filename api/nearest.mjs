@@ -123,8 +123,6 @@ export function nearest(lat, lon) {
     distance: { meters: Math.round(meters), miles: Math.round(miles * 100) / 100 },
     bearing: Math.round(bearing),
     direction: cardinal(bearing),
-    text: inside
-      ? `${best.name}, ${best.state}`
-      : `${miles.toFixed(1)} miles ${cardinal(bearing)} of ${best.name}, ${best.state}`,
+    text: `${miles.toFixed(1)} miles ${cardinal(bearing)} of ${best.name}, ${best.state}`,
   };
 }

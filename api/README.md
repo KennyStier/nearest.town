@@ -55,7 +55,8 @@ You can deploy with Docker (`docker build -t nearest-town-api . && docker run -p
 }
 ```
 
-- `inside` is `true` when the point is within the town's boundary. `text` is then just the name (`"Cincinnati, OH"`), but `distance`, `bearing` and `direction` are still filled in, measured from the town's center.
+- `inside` is `true` when the point is within the town's boundary. `distance`, `bearing`, `direction` and `text` are always measured from the town's center, even inside it (`"3.0 miles S of Cincinnati, OH"`).
+- The center is the middle of the town's land area, which can be far from downtown in big or merged city-counties. Downtown Anchorage is about 20 miles W of the Municipality of Anchorage's center.
 - `bearing` / `direction` are measured **from the town center to the query point**, as in "2.3 miles NW of Millhousen".
 - Invalid coordinates return `400`.
 - `GET /health` returns the status and which data file is loaded.
