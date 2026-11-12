@@ -1,0 +1,13 @@
+{
+  "name": "nearest-town-api",
+  "version": "1.0.0",
+  "description": "Nearest US town to a latitude/longitude, from Census Gazetteer place center points",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test",
+    "build-data": "node build-data.mjs"
+  }
+}

@@ -1,0 +1,19 @@
+# Example systemd unit. Copy to /etc/systemd/system/, adjust paths/user, then:
+#   sudo systemctl enable --now nearest-town-api
+[Unit]
+Description=Nearest Town API
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/nearest.town/api
+ExecStart=/usr/bin/node server.mjs
+Environment=PORT=8080
+Environment=HOST=127.0.0.1
+Restart=on-failure
+User=www-data
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
