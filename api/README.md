@@ -32,12 +32,39 @@ node build-data.mjs 2026 && node build-boundaries.mjs 2026
 ## Run
 
 ```sh
-node server.mjs                 # listens on 0.0.0.0:8080
-PORT=3000 HOST=127.0.0.1 node server.mjs
+node server.mjs                 # listens on 127.0.0.1:8080
+PORT=3000 node server.mjs
 npm test
 ```
 
-You can deploy with Docker (`docker build -t nearest-town-api . && docker run -p 8080:8080 nearest-town-api`) or with the example systemd unit in `nearest-town-api.service`. If you put it behind a reverse proxy, add HTTPS there.
+| Variable | Default | |
+|---|---|---|
+| `PORT` | `8080` | |
+| `HOST` | `127.0.0.1` | Only reachable from this machine. Use `0.0.0.0` to accept outside connections (the Dockerfile does this inside the container). |
+| `RATE_LIMIT_PER_MIN` | `600` | Requests per client IP per minute to `/nearest`; `0` turns it off. |
+| `TRUST_PROXY` | off | Set to `1` **only** behind your own reverse proxy, so rate limiting uses the real client IP from `X-Forwarded-For`. Without a proxy, clients could fake that header to dodge the limit. |
+
+### Deploy
+
+Put it behind a reverse proxy (Caddy, nginx, etc.) that handles HTTPS, and set `TRUST_PROXY=1`.
+
+- **systemd:** `nearest-town-api.service` runs the server as a throwaway user with no write access, no privileges and a restricted set of system calls. Check it with `systemd-analyze security nearest-town-api`.
+- **Docker:**
+  ```sh
+  docker build -t nearest-town-api .
+  docker run -d --restart unless-stopped --read-only --cap-drop ALL \
+    --security-opt no-new-privileges -p 127.0.0.1:8080:8080 nearest-town-api
+  ```
+
+## Security
+
+- **No dependencies:** only Node's standard library, so there are no third-party packages to compromise.
+- **Strict input checking:** coordinates must be plain decimal degrees within range. URLs are never decoded, so malformed escapes can't break anything.
+- **No crash on a bad request:** unexpected errors return a generic `500`. The details are logged on the server, never sent to the client.
+- **Slow clients dropped:** headers must arrive within 10 s and the whole request within 15 s. Headers are capped at 8 KB.
+- **Rate limit:** per IP, in memory (resets when the server restarts). For several servers or more control, rate-limit at the reverse proxy instead.
+- **Response headers:** `nosniff`, a deny-all Content-Security-Policy, `no-referrer`. CORS allows any site, which is intended for a public read-only API.
+- **Least privilege:** the server stores nothing, reads only its data files and never writes to disk.
 
 ## API
 

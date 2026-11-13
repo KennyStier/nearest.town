@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { nearest, cardinal } from "./nearest.mjs";
-import { server } from "./server.mjs";
+import net from "node:net";
+
+// Low limit so the rate-limit test is quick; must be set before server.mjs loads.
+process.env.RATE_LIMIT_PER_MIN = "60";
+const { server } = await import("./server.mjs");
 
 // Expected values are distances to the Census Gazetteer center points.
 // [lat, lon, town, state, miles from center, direction from center, inside town?]
@@ -47,27 +51,83 @@ test("cardinal directions wrap correctly", () => {
   assert.equal(cardinal(315), "NW");
 });
 
-test("HTTP routes", async (t) => {
+// Send raw bytes, bypassing fetch's URL normalization; returns the status line.
+function raw(port, request) {
+  return new Promise((resolve, reject) => {
+    const sock = net.connect(port, "127.0.0.1", () => sock.write(request));
+    let data = "";
+    sock.on("data", (d) => (data += d));
+    sock.on("end", () => resolve(data.split("\r\n")[0]));
+    sock.on("error", reject);
+  });
+}
+
+test("HTTP routes and hardening", async (t) => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   t.after(() => server.close());
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const get = async (p) => { const res = await fetch(base + p); return [res.status, await res.json(), res.headers]; };
+  const port = server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const req = async (p, init) => { const res = await fetch(base + p, init); const text = await res.text(); return [res.status, text ? JSON.parse(text) : null, res.headers, text]; };
 
-  let [status, body, headers] = await get("/nearest/39.237535,-85.461877");
+  let [status, body, headers] = await req("/nearest/39.237535,-85.461877");
   assert.equal(status, 200);
   assert.equal(body.text, "2.3 miles NW of Millhousen, IN");
   assert.equal(headers.get("access-control-allow-origin"), "*");
+  assert.equal(headers.get("x-content-type-options"), "nosniff");
+  assert.match(headers.get("content-security-policy"), /default-src 'none'/);
 
-  [status, body] = await get("/nearest?lat=39.237535&lon=-85.461877");
+  [status, body] = await req("/nearest?lat=39.237535&lon=-85.461877");
   assert.equal(status, 200);
   assert.equal(body.town.name, "Millhousen");
 
-  for (const bad of ["/nearest/abc", "/nearest/91,0", "/nearest/0,181", "/nearest", "/nearest?lat=1"]) {
-    [status] = await get(bad);
-    assert.equal(status, 400, bad);
+  const bad = [
+    "/nearest/abc", "/nearest/91,0", "/nearest/0,181", "/nearest", "/nearest?lat=1",
+    "/nearest?lat=0x10&lon=5", "/nearest?lat=1e1&lon=5", "/nearest?lat=Infinity&lon=5",
+    "/nearest?lat=&lon=", "/nearest/39.2,-85.4/extra", "/nearest/39.2,-85.4,1",
+    "/nearest/1." + "1".repeat(50) + ",2", "/nearest/%33%39,-85",
+  ];
+  for (const p of bad) {
+    [status] = await req(p);
+    assert.equal(status, 400, p);
   }
-  [status] = await get("/nope");
+  [status] = await req("/nope");
   assert.equal(status, 404);
-  [status, body] = await get("/health");
+
+  // A malformed %-escape used to throw in decodeURIComponent and crash the process.
+  assert.match(await raw(port, "GET /nearest/%E0%A4%A HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"), / 400 /);
+  assert.match(await raw(port, "GET /%ZZ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"), / 404 /);
+  // Garbage request line and oversized headers are rejected at the HTTP layer.
+  assert.match(await raw(port, "NOT A REQUEST\r\n\r\n"), / 400 /);
+  assert.match(await raw(port, `GET /health HTTP/1.1\r\nHost: x\r\nX-Big: ${"a".repeat(10_000)}\r\nConnection: close\r\n\r\n`), / 431 /);
+
+  [status, , headers] = await req("/health", { method: "POST", body: "x" });
+  assert.equal(status, 405);
+  assert.equal(headers.get("allow"), "GET, HEAD, OPTIONS");
+  let text;
+  [status, , headers, text] = await req("/health", { method: "OPTIONS" });
+  assert.equal(status, 204);
+  assert.equal(text, "");
+  [status, , , text] = await req("/nearest/39.2,-85.4", { method: "HEAD" });
+  assert.equal(status, 200);
+  assert.equal(text, "");
+
+  [status, body] = await req("/health");
   assert.equal(body.status, "ok");
+  assert.equal(body.data.boundaries, body.data.count);
+
+  // Still serving after all of the above.
+  [status] = await req("/nearest/39.2,-85.4");
+  assert.equal(status, 200);
+
+  // Rate limit (60/min in tests): keep going until we get a 429.
+  let limited = null;
+  for (let i = 0; i < 80 && !limited; i++) {
+    const res = await fetch(base + "/nearest/39.2,-85.4");
+    await res.text();
+    if (res.status === 429) limited = res;
+  }
+  assert.ok(limited, "expected a 429 within 80 requests");
+  assert.ok(Number(limited.headers.get("retry-after")) >= 1);
+  [status] = await req("/health"); // health checks aren't rate limited
+  assert.equal(status, 200);
 });
