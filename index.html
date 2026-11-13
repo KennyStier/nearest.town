@@ -8,64 +8,43 @@
 </head>
 <body>
     <h1>Nearest Town</h1>
-    <p>Locates the nearest town using the National Weather Service API</p>
+    <p>Locates the nearest town using US Census place data</p>
     <p>Created by <a href="https://kstr.us" target="_blank">Kenny Stier</a> in <a href="https://millhousen.com" target="_blank">Millhousen</a></p>
 
     <form id ='latlong'>
         Latitude:    <input type='text' name='latitude'>
-        Latitude:    <input type='text' name='longitude'>
+        Longitude:   <input type='text' name='longitude'>
 
-        <input type="button" value="Submit" id='smit' >
+        <input type="submit" value="Submit" id='smit' >
     </form>
 
-    <!-- https://howtocreateapps.com/fetch-and-display-json-html-javascript/ -->
     <div id="myData"></div>
     <script>
-        // https://stackoverflow.com/a/30282873
-        document.getElementById('smit').onclick = function () {
-            var latitudeLoc = document.querySelector("#latlong [name='latitude']");
-            var longitudeLoc = document.querySelector("#latlong [name='longitude']");
-            var latitude = latitudeLoc.value;
-            var longitude = longitudeLoc.value;
-            var sourceURL = "https://api.weather.gov/points/" + latitude + "," + longitude;
-            fetchData(sourceURL);
-        }
-        function fetchData(source) { 
-            fetch(source)
+        // Our own API (api/ in this repo), served by Caddy at /api on this same host.
+        var API = "/api/nearest/";
+
+        document.getElementById('latlong').onsubmit = function (event) {
+            event.preventDefault();
+            var latitude = document.querySelector("#latlong [name='latitude']").value.trim();
+            var longitude = document.querySelector("#latlong [name='longitude']").value.trim();
+            fetch(API + encodeURIComponent(latitude) + "," + encodeURIComponent(longitude))
             .then(function (response) {
-                return response.json();
+                return response.json().then(function (data) {
+                    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+                    return data;
+                });
             })
             .then(function (data) {
-                appendData(data);
+                show(data.text);
             })
             .catch(function (err) {
-                console.log('Error: ' + err);
+                show("Error: " + err.message);
             });
-        }
-        function appendData(data) {
-            var mainContainer = document.getElementById("myData");
+        };
+        function show(message) {
             var div = document.createElement("div");
-
-            // Since mid-2026 NWS measures distance to the town's boundary (0 when inside town).
-            // Measure from the town's center point instead: relativeLocation.geometry is the
-            // town's Census internal point, data.geometry is the queried point.
-            var town = data.properties.relativeLocation.geometry.coordinates; // [lon, lat]
-            var here = data.geometry.coordinates;                             // [lon, lat]
-            var toRad = function (d) { return d * Math.PI / 180; };
-            var lat1 = toRad(town[1]), lat2 = toRad(here[1]), dLon = toRad(here[0] - town[0]);
-            var h = Math.pow(Math.sin((lat2 - lat1) / 2), 2) + Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(dLon / 2), 2);
-            var metersFromTown = 2 * 6371008.8 * Math.asin(Math.sqrt(h));
-            var bearingFromTown = (Math.atan2(Math.sin(dLon) * Math.cos(lat2),
-                Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)) * 180 / Math.PI + 360) % 360;
-            var milesFromTown = (metersFromTown / 1609.344).toFixed(1);
-
-            // Degrees to Cardinal Direction https://gist.github.com/felipeskroski/8aec22f01dabdbf8fb6b#gistcomment-3485882
-            function degToCard(value) { value = parseFloat(value); if (value <= 11.25) return 'N'; value -= 11.25; var allDirections = ['NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N']; var dIndex = parseInt(value/22.5); return allDirections[dIndex] ? allDirections[dIndex] : 'N'; }
-            var directionFromTown = degToCard(bearingFromTown);
-
-            div.innerHTML = milesFromTown + " miles " + directionFromTown + " of " + data.properties.relativeLocation.properties.city + ", " + data.properties.relativeLocation.properties.state;
-
-            mainContainer.appendChild(div);
+            div.textContent = message;
+            document.getElementById("myData").appendChild(div);
         }
     </script>
 
